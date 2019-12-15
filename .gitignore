@@ -1,0 +1,3 @@
+connectors/debezium-debezium-connector-sqlserver
+connect-libs/mssql-jdbc-7.2.2.jre8.jar
+target/

@@ -1,0 +1,59 @@
+{
+    "type": "record",
+    "name": "PricingPublish",
+    "namespace": "io.daniellavoie.replication.processor",
+    "fields": [
+      {
+        "name": "KeyEMDPricing",
+        "type": {"type": "string"}
+      },
+      {
+        "name": "KeyInstrument",
+        "type": "int"
+      },
+      {
+        "name": "InstrumentValueAsOf",
+        "type": {"type" : "long", "logicalType" : "timestamp-millis"}
+      },
+      {
+        "name": "KeyInstrumentSource",
+        "type": "int"
+      },
+      {
+        "name": "KeyInstrumentLocation",
+        "type": "int"
+      },
+      {
+        "name": "KeyInstrumentMeasure",
+        "type": "int"
+      },
+      {
+        "name": "InstrumentValue",
+        "type": "double"
+      },
+      {
+        "name": "InstrumentDeliveryStart",
+        "type": {"type" : "long", "logicalType" : "timestamp-millis"}
+      },
+      {
+        "name": "InstrumentDeliveryEnd",
+        "type": {"type" : "long", "logicalType" : "timestamp-millis"}
+      },
+      {
+        "name": "UpdOperation",
+        "type": "int"
+      },
+      {
+        "name": "UpdDate",
+        "type": {"type" : "long", "logicalType" : "timestamp-millis"}
+      },
+      {
+        "name": "ActiveRow",
+        "type": "boolean"
+      },
+      {
+        "name": "InstrumentValuePublishDate",
+        "type": {"type" : "long", "logicalType" : "timestamp-millis"}
+      }
+    ]
+}

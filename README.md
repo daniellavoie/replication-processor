@@ -33,10 +33,6 @@ The supported destinations are:
   * SQLite
 * Management UI (Maybe?)
 
-## Current limitations
-
-* Connect Basic Auth for the REST Api is not yet support by the client.
-
 ## Quickstart
 
 ### Pre requisites to run the Replication Processor locally
@@ -212,6 +208,8 @@ $ java -jar processor/target/replication-processor.jar \
   --spring.kafka.properties.schema.registry.url=https://my-schema-registry-server
   --spring.kafka.properties.schema.registry.basic.auth.user.info=my-schema-registry-key:my-schema-registry-secret
   --connect.url=https://my-connect-rest-url
+  --connect.basic.user=my-connect-user
+  --connect.basic.password=my-connect-password
 ```
 
 ### Configuring the Replication Processor with environment variables
@@ -229,6 +227,8 @@ $ export SPRING_KAFKA_PROPERTIES_BASIC_AUTH_CREDENTIALS_SOURCE=USER_INFO
 $ export SPRING_KAFKA_PROPERTIES_SCHEMA_REGISTRY_URL=https://my-schema-registry-server
 $ export SPRING_KAFKA_PROPERTIES_REGISTRY_BASIC_AUTH_USER_INFO=my-schema-registry-key:my-schema-registry-secret
 $ export CONNECT_URL=https://my-connect-rest-url
+$ export CONNECT_BASIC_USER=my-connect-user
+$ export CONNECT_BASIC_PASSWORD=my-connect-password
 
 $ java -jar processor/target/replication-processor.jar
 ```

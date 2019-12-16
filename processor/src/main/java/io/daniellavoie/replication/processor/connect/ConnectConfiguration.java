@@ -9,10 +9,10 @@ import org.springframework.context.annotation.Configuration;
 public class ConnectConfiguration {
 	private String url = "http://localhost:8083";
 
-	@Value("${connect.basic.user}")
+	@Value("${connect.basic.user:}")
 	private String basicUser = "";
 
-	@Value("${connect.basic.password}")
+	@Value("${connect.basic.password:}")
 	private String basicPassword = "";
 
 	public String getUrl() {

@@ -8,7 +8,7 @@ This application takes your declarative `Replication Definition` manifest and i
 
 The amount of configurable options is intented to serve simplicity over flexibility.
 
-Ultimately, the goal of this project is to offer a simplified DSL to manage the flow of realtime ETL pipelines. Currently, Kafka Connectors instance and Kafka Streams application needs to be configured and written manually. 
+Ultimately, the goal of this project is to offer a simplified DSL to manage the flow of realtime ETL pipelines which constrats with the current requirement of configuring Kafka Connectors manually and writing custom Kafka Streams applications. 
 
 The vision of this project aims to offer a DSL with different clients, enabling a a tooling ecosystem can be built to help designing and testing data integration pipelines.
 

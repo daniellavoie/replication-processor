@@ -22,8 +22,9 @@ import org.springframework.stereotype.Service;
 import io.confluent.kafka.streams.serdes.avro.GenericAvroSerde;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.model.SourceDefinition;
-import io.daniellavoie.replication.processor.source.AttunityDataExtractor;
 import io.daniellavoie.replication.processor.source.SourceDataExtractor;
+import io.daniellavoie.replication.processor.source.attunity.AttunityDataExtractor;
+import io.daniellavoie.replication.processor.source.debezium.sqlserver.DebeziumSqlServerDataExtractor;
 import io.daniellavoie.replication.processor.topic.TopicUtil;
 import reactor.core.publisher.Mono;
 
@@ -62,7 +63,7 @@ public class TopologyServiceImpl implements TopologyService {
 
 		eventStream
 
-				.mapValues(event -> sourceDataExtractor.extractRecord(event, avroSinkSchema))
+				.flatMapValues(event -> sourceDataExtractor.extractRecord(event, avroSinkSchema).collectList().block())
 
 				.to(replicationDefinition.getSinkTopic().getName(), Produced.valueSerde(genericAvroSerde));
 
@@ -70,8 +71,11 @@ public class TopologyServiceImpl implements TopologyService {
 	}
 
 	private SourceDataExtractor getDataExtractor(ReplicationDefinition replicationDefinition) {
-		if (replicationDefinition.getSource().getType().equals(SourceDefinition.Type.ATTUNITY)) {
+		SourceDefinition.Type type = replicationDefinition.getSource().getType();
+		if (type.equals(SourceDefinition.Type.ATTUNITY)) {
 			return new AttunityDataExtractor();
+		} else if (type.equals(SourceDefinition.Type.SQLSERVER)) {
+			return new DebeziumSqlServerDataExtractor();
 		}
 
 		throw new UnsupportedOperationException(

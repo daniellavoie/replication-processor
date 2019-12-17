@@ -1,9 +1,9 @@
-package io.daniellavoie.replication.processor.model;
+package io.daniellavoie.replication.processor.it.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class SqlServerConfiguration {
+public class SqlServerSinkConfiguration {
 	public enum InsertMode {
 		insert, upsert
 	}
@@ -14,7 +14,7 @@ public class SqlServerConfiguration {
 	private final String pkFields;
 
 	@JsonCreator
-	public SqlServerConfiguration(@JsonProperty("connectionUrl") String connectionUrl,
+	public SqlServerSinkConfiguration(@JsonProperty("connectionUrl") String connectionUrl,
 			@JsonProperty("user") String user, @JsonProperty("password") String password,
 			@JsonProperty("pkFields") String pkFields) {
 		this.connectionUrl = connectionUrl;

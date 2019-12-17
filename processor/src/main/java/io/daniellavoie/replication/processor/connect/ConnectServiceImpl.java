@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.Assert;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
@@ -67,7 +68,12 @@ public class ConnectServiceImpl implements ConnectService {
 
 	public boolean configurationMatches(ConnectorInstance connectorInstance,
 			ConnectorInstance existingConnectorInstance) {
-		boolean mismatch = connectorInstance.getConfig().entrySet().stream()
+		Assert.notNull(existingConnectorInstance,
+				"Existing connector instance is undefined for " + connectorInstance.getName() + ".");
+		Assert.notNull(existingConnectorInstance.getConfig(),
+				"Configuration is undefined for existing connector instance " + connectorInstance.getName() + ".");
+
+		boolean mismatch = existingConnectorInstance.getConfig().entrySet().stream()
 				.filter(entry -> existingConnectorInstance.getConfig().containsKey(entry.getKey()))
 				.filter(entry -> !existingConnectorInstance.getConfig().get(entry.getKey()).equals(entry.getValue()))
 				.count() != 0

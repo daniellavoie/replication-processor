@@ -3,95 +3,63 @@ package io.daniellavoie.replication.processor.it;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.daniellavoie.replication.processor.PricingPublish;
 import io.daniellavoie.replication.processor.it.attunity.Event;
 import io.daniellavoie.replication.processor.it.attunity.Message;
 import io.daniellavoie.replication.processor.it.model.Format;
 import io.daniellavoie.replication.processor.it.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.it.model.SinkDefinition;
 import io.daniellavoie.replication.processor.it.model.SourceDefinition;
-import io.daniellavoie.replication.processor.it.model.SqlServerConfiguration;
 import io.daniellavoie.replication.processor.it.model.Topic;
-import io.daniellavoie.replication.processor.it.topic.PricingPublishConfiguration;
-import io.daniellavoie.replication.processor.it.topic.PricingPublishSourceConfiguration;
+import io.daniellavoie.replication.processor.it.topic.AttunitySourceConfiguration;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-@SpringBootTest
-public class AssertReplicationTest {
-	private final static Random RANDOM = new Random();
+public class AssertAttunityReplicationTest extends AbstractReplicationTest {
+	private static final Logger LOGGER = LoggerFactory.getLogger(AssertAttunityReplicationTest.class);
+	
 	private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
 
 	@Autowired
-	private PricingPublishConfiguration pricingPublishConfiguration;
-
-	@Autowired
-	private PricingPublishSourceConfiguration pricingPublishSourceConfiguration;
-
-	@Autowired
-	private KafkaProperties kafkaProperties;
-
-	@Autowired
-	private WebClient webClient;
-
-	@Autowired
-	private JdbcTemplate jdbcTemplate;
-
-	@Autowired
-	private Environment environment;
+	private AttunitySourceConfiguration attunitySourceConfiguration;
 
 	private KafkaTemplate<byte[], Event> pricingPublishSourceTemplate;
-	private Consumer<byte[], PricingPublish> consumer;
 
 	@BeforeEach
 	public void setup() {
-		consumer = new DefaultKafkaConsumerFactory<byte[], PricingPublish>(kafkaProperties.buildConsumerProperties())
-				.createConsumer();
-
-		consumer.subscribe(Arrays.asList(pricingPublishConfiguration.getName()));
-
 		pricingPublishSourceTemplate = new KafkaTemplate<byte[], Event>(
 				new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties()));
-
 	}
 
 	@Test
 	public void assertPricePublishing() throws IOException {
 		configureReplicationDefinition();
+		
+		// Clean existing records.
+		pullRecords(consumer).count().block();
 
 		jdbcTemplate.execute("delete from PricingPublish");
 
-		CountDownLatch latch = new CountDownLatch(10000);
-
+		// Generate events
 		Flux.range(0, 10000)
 
 				.map(this::generateRandomEvent)
@@ -100,25 +68,8 @@ public class AssertReplicationTest {
 
 				.blockLast();
 
-		boolean empty = true;
-		int emptyPollCount = 0;
-		do {
-			ConsumerRecords<byte[], PricingPublish> records = consumer.poll(Duration.ofSeconds(20));
-			empty = records.isEmpty();
-
-			if (empty) {
-				++emptyPollCount;
-			}
-
-			Flux.fromIterable(() -> records.iterator())
-
-					.doOnNext(consumerRecord -> latch.countDown()).then().block();
-		} while (latch.getCount() != 10000l && !empty && emptyPollCount < 3);
-
-		Assertions.assertEquals(0, latch.getCount());
-
-		Assertions.assertEquals(10000,
-				jdbcTemplate.queryForObject("select count(1) from PricingPublish", Integer.class));
+		Assertions.assertEquals(10000, pullRecords(consumer).count().block());
+		Assertions.assertEquals(10000, pullTableCount("PricingPublish").block());
 	}
 
 	private Event generateRandomEvent(int index) {
@@ -157,36 +108,30 @@ public class AssertReplicationTest {
 				new InputStreamReader(new ClassPathResource("avro/PricingPublish.avsc").getInputStream())).lines()
 						.collect(Collectors.joining("\n"));
 
-		String connectionUrl = environment.getProperty("replication.replicated-db-url") + ";user="
-				+ environment.getProperty("spring.datasource.username") + ";password="
-				+ environment.getProperty("spring.datasource.password");
+		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.ATTUNITY, Format.JSON, null,
+				null);
 
-		SqlServerConfiguration sqlServerConfiguration = new SqlServerConfiguration(connectionUrl,
-				environment.getProperty("spring.datasource.username"),
-				environment.getProperty("spring.datasource.password"), "KeyEMDPricing");
-
-		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.ATTUNITY, Format.JSON, null);
 		SinkDefinition sinkDefinition = new SinkDefinition("sql-server", SinkDefinition.Type.SQLSERVER, 1,
-				sqlServerConfiguration);
+				buildSqlServerSinkConfiguration(environment));
 
 		ReplicationDefinition replicationDefinition = new ReplicationDefinition("test",
-				new Topic(pricingPublishSourceConfiguration.getName(), pricingPublishSourceConfiguration.isCompacted(),
-						pricingPublishSourceConfiguration.getPartitions(),
-						pricingPublishSourceConfiguration.getReplicationFactor()),
+				new Topic(attunitySourceConfiguration.getName(), attunitySourceConfiguration.isCompacted(),
+						attunitySourceConfiguration.getPartitions(),
+						attunitySourceConfiguration.getReplicationFactor()),
 				sourceDefinition,
 				new Topic(pricingPublishConfiguration.getName(), pricingPublishConfiguration.isCompacted(),
 						pricingPublishConfiguration.getPartitions(),
 						pricingPublishConfiguration.getReplicationFactor()),
 				Format.AVRO, sinkSchema, Arrays.asList(sinkDefinition));
 
-		System.out.println(new ObjectMapper().writeValueAsString(replicationDefinition));
+		LOGGER.info("Replication Definition : {}", new ObjectMapper().writeValueAsString(replicationDefinition));
 
 		webClient.post().uri("/replication-definition").bodyValue(replicationDefinition).exchange().log().block();
 	}
 
 	private Mono<Void> publishEvent(Event event) {
 		return Mono.fromFuture(pricingPublishSourceTemplate
-				.send(pricingPublishSourceConfiguration.getName(),
+				.send(attunitySourceConfiguration.getName(),
 						String.valueOf(event.getMessage().getData().get("KeyInstrument")).getBytes(), event)
 				.completable()).then();
 	}

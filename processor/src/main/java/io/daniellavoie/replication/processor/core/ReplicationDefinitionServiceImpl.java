@@ -5,15 +5,18 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import io.daniellavoie.replication.processor.connect.ConnectService;
 import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
+import io.daniellavoie.replication.processor.model.DebeziumSqlServerConfiguration;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.model.SinkDefinition;
 import io.daniellavoie.replication.processor.model.SourceDefinition;
@@ -34,6 +37,12 @@ public class ReplicationDefinitionServiceImpl
 	private final String replicationDefinitionStoreName;
 	private final String topicName;
 	private final KafkaTemplate<String, ReplicationDefinition> kafkaTemplate;
+	private final String connectBootstrapServers;
+
+	/* Schema Registry Config */
+	private final String connectSchemaRegistryUrl;
+	private final String connectSchemaRegistryCredentialsSource;
+	private final String connectSchemaRegistryUserInfo;
 
 	private final WebClient webClient = WebClient.create();
 
@@ -41,12 +50,21 @@ public class ReplicationDefinitionServiceImpl
 			ConnectService connectService, TopologyServiceImpl topologyService,
 			ReplicationDefinitionConfiguration replicationDefinitionConfiguration,
 			ReplicationDefinitionStoreConfiguration replicationDefinitionStoreConfiguration,
+			@Value("${replication.connect.kafka.bootstrap.servers}") String connectBootstrapServers,
+			@Value("${replication.connect.schema.registry.url}") String connectSchemaRegistryUrl,
 			KafkaProperties kafkaProperties) {
 		this.kafkaStreamsMetaService = kafkaStreamsMetaService;
 		this.connectService = connectService;
 		this.topologyService = topologyService;
 		this.topicName = replicationDefinitionConfiguration.getName();
 		this.replicationDefinitionStoreName = replicationDefinitionStoreConfiguration.getName();
+		this.connectBootstrapServers = connectBootstrapServers;
+
+		this.connectSchemaRegistryUrl = connectSchemaRegistryUrl;
+		this.connectSchemaRegistryCredentialsSource = kafkaProperties.getProperties()
+				.get("basic.auth.credentials.source");
+		this.connectSchemaRegistryUserInfo = kafkaProperties.getProperties()
+				.get("schema.registry.basic.auth.user.info");
 
 		this.kafkaTemplate = new KafkaTemplate<String, ReplicationDefinition>(
 				new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties()));
@@ -65,9 +83,7 @@ public class ReplicationDefinitionServiceImpl
 				// Refresh the source connector if required.
 				.then(Mono.just(requiresSourceConnector(replicationDefinition)).filter(Boolean::booleanValue)
 
-						.map(requiresSourceConnector -> buildSourceConnectorInstance(
-								replicationDefinition.getSinkTopic().getName(), replicationDefinition.getName(),
-								replicationDefinition.getSource()))
+						.map(requiresSourceConnector -> buildSourceConnectorInstance(replicationDefinition))
 
 						.flatMap(connectService::refreshConnector))
 
@@ -76,36 +92,73 @@ public class ReplicationDefinitionServiceImpl
 				.doOnSubscribe(subscriber -> LOGGER.info("Starting replication {}", replicationDefinition.getName()));
 	}
 
+	private Map<String, String> buildSinkConnectorConfig(String sinkTopic, SinkDefinition sinkDefinition) {
+		Map<String, String> config = new HashMap<>();
+
+		if (sinkDefinition.getType().equals(SinkDefinition.Type.SQLSERVER)) {
+
+			config.put("connector.class", "io.confluent.connect.jdbc.JdbcSinkConnector");
+			config.put("tasks.max", String.valueOf(sinkDefinition.getTasksMax()));
+			config.put("value.converter", "io.confluent.connect.avro.AvroConverter");
+			config.put("value.converter.schema.registry.url", connectSchemaRegistryUrl);
+
+			if (connectSchemaRegistryCredentialsSource != null) {
+				config.put("basic.auth.credentials.source", connectSchemaRegistryCredentialsSource);
+			}
+			if (connectSchemaRegistryUserInfo != null) {
+				config.put("basic.auth.user.info", connectSchemaRegistryUserInfo);
+			}
+
+			config.put("topics", sinkTopic);
+			config.put("connection.url", sinkDefinition.getSqlServerSinkConfiguration().getConnectionUrl());
+			config.put("connection.user", sinkDefinition.getSqlServerSinkConfiguration().getUser());
+			config.put("connection.password", sinkDefinition.getSqlServerSinkConfiguration().getPassword());
+			config.put("auto.create", String.valueOf(true));
+			config.put("insert.mode", "upsert");
+			config.put("pk.mode", "record_value");
+			config.put("pk.fields", sinkDefinition.getSqlServerSinkConfiguration().getPkFields());
+		} else {
+			throw new RuntimeException(sinkDefinition.getType() + " is not a supported sink type.");
+		}
+
+		return config;
+	}
+
 	private ConnectorInstance buildSinkConnectorInstance(String sinkTopic, String replicationName,
 			SinkDefinition sinkDefinition) {
 		return new ConnectorInstance(replicationName + "-" + sinkDefinition.getName() + "-sink",
 				buildSinkConnectorConfig(sinkTopic, sinkDefinition));
 	}
 
-	private ConnectorInstance buildSourceConnectorInstance(String sourceTopic, String replicationName,
-			SourceDefinition sourceDefinition) {
-		throw new UnsupportedOperationException("Not implemented yet.");
-	}
-
-	private Map<String, String> buildSinkConnectorConfig(String sinkTopic, SinkDefinition sinkDefinition) {
+	private Map<String, String> buildSourceConnectorConfig(ReplicationDefinition replicationDefinition) {
 		Map<String, String> config = new HashMap<>();
 
-		if (sinkDefinition.getType().equals(SinkDefinition.Type.SQLSERVER)) {
-			config.put("connector.class", "io.confluent.connect.jdbc.JdbcSinkConnector");
-			config.put("tasks.max", String.valueOf(sinkDefinition.getTasksMax()));
-			config.put("topics", sinkTopic);
-			config.put("connection.url", sinkDefinition.getSqlServerConfiguration().getConnectionUrl());
-			config.put("connection.user", sinkDefinition.getSqlServerConfiguration().getUser());
-			config.put("connection.password", sinkDefinition.getSqlServerConfiguration().getPassword());
-			config.put("auto.create", String.valueOf(true));
-			config.put("insert.mode", "upsert");
-			config.put("pk.mode", "record_value");
-			config.put("pk.fields", sinkDefinition.getSqlServerConfiguration().getPkFields());
+		if (replicationDefinition.getSource().getType().equals(SourceDefinition.Type.SQLSERVER)) {
+			DebeziumSqlServerConfiguration debeziumSqlServerConfiguration = replicationDefinition.getSource()
+					.getDebeziumSqlServerConfiguration();
+
+			Assert.notNull(debeziumSqlServerConfiguration, "Debezium SQL Server configuration is undefined.");
+
+			config.put("connector.class", "io.debezium.connector.sqlserver.SqlServerConnector");
+			config.put("key.converter", "org.apache.kafka.connect.storage.StringConverter");
+			config.put("database.hostname", debeziumSqlServerConfiguration.getHostname());
+			config.put("database.port", String.valueOf(debeziumSqlServerConfiguration.getPort()));
+			config.put("database.user", debeziumSqlServerConfiguration.getUser());
+			config.put("database.password", debeziumSqlServerConfiguration.getPassword());
+			config.put("database.dbname", debeziumSqlServerConfiguration.getDbname());
+			config.put("database.server.name", debeziumSqlServerConfiguration.getServerName());
+			config.put("database.history.kafka.bootstrap.servers", connectBootstrapServers);
+			config.put("database.history.kafka.topic", "debezium-history-" + replicationDefinition.getName());
 		} else {
-			throw new RuntimeException(sinkDefinition.getType() + " is not a supported sink type.");
+			throw new RuntimeException(replicationDefinition.getSource().getType() + " is not a supported sink type.");
 		}
 
 		return config;
+	}
+
+	private ConnectorInstance buildSourceConnectorInstance(ReplicationDefinition replicationDefinition) {
+		return new ConnectorInstance(replicationDefinition.getName() + "-source",
+				buildSourceConnectorConfig(replicationDefinition));
 	}
 
 	@Override

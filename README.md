@@ -16,6 +16,7 @@ The vision of this project aims to offer a DSL with different clients, enabling 
 
 The supported sources are:
 
+* Debezium CDC for SqlServer
 * Any topic fed by Attunity
 
 The supported destinations are:
@@ -23,14 +24,15 @@ The supported destinations are:
 * SqlServer
 
 ## Upcoming improvements 
-
 * Sources:
-  * Debezium CDC for SqlServer
+  * Debezium for MySQL
+  * MongoDB
 * Sinks
   * MySQL
   * PostgreSQL
   * Oracle
   * SQLite
+  * MongoDB
 * Management UI (Maybe?)
 
 ## Quickstart
@@ -78,9 +80,16 @@ curl -X POST http://localhost:8080/replication-definition \
     "replicationFactor":1
   },
   "source":{
-    "type":"ATTUNITY",
+    "type":"SQLSERVER",
     "valueFormat":"JSON",
-    "schema":null
+    "debeziumSqlServerConfiguration": {
+      "hostname": "replicated-db",
+      "port": "1433",
+      "user": "SA",
+      "password": "Password!",
+      "dbname": "tests",,
+      "serverName": "replicated-db",
+    }
   },
   "sinkTopic":{
     "name":"PricingPublish",
@@ -180,7 +189,7 @@ $ ./mvnw -f integration-tests/replication-processor/pom.xml
 ### Accessing the sink database to valide the rows have been replicated successfully
 
 ```
-$ docker exec -it replication-processor-replicated-db bash -c '/opt/mssql-tools/bin/sqlcmd -U sa -P Password!'
+$ docker exec -it replication-replicated-db bash -c '/opt/mssql-tools/bin/sqlcmd -U sa -P Password!'
 
 1> SELECT count(1) from PricingPublish;
 1> go

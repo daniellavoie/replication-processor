@@ -1,3 +1,7 @@
+
+USE tests;
+GO
+
 CREATE TABLE PricingPublish (
 KeyInstrumentLocation int NOT NULL,
  InstrumentValueAsOf  datetime2 NOT NULL,
@@ -13,4 +17,3 @@ KeyInstrumentLocation int NOT NULL,
  KeyEMDPricing  varchar(900) NOT NULL,
  InstrumentDeliveryEnd  datetime2 NOT NULL,
 PRIMARY KEY(KeyEMDPricing));
-GO

@@ -1,4 +1,4 @@
-package io.daniellavoie.replication.processor.attunity;
+package io.daniellavoie.replication.processor.source.attunity;
 
 import java.util.Map;
 

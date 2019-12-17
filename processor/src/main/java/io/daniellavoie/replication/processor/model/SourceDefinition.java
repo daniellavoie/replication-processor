@@ -12,12 +12,16 @@ public class SourceDefinition {
 	private final Format valueFormat;
 	private final String schema;
 
+	private final DebeziumSqlServerConfiguration debeziumSqlServerConfiguration;
+
 	@JsonCreator
 	public SourceDefinition(@JsonProperty("type") Type type, @JsonProperty("valueFormat") Format valueFormat,
-			@JsonProperty("schema") String schema) {
+			@JsonProperty("schema") String schema,
+			@JsonProperty("debeziumSqlServerConfiguration") DebeziumSqlServerConfiguration debeziumSqlServerConfiguration) {
 		this.type = type;
 		this.valueFormat = valueFormat;
 		this.schema = schema;
+		this.debeziumSqlServerConfiguration = debeziumSqlServerConfiguration;
 	}
 
 	public Type getType() {
@@ -30,5 +34,9 @@ public class SourceDefinition {
 
 	public String getSchema() {
 		return schema;
+	}
+
+	public DebeziumSqlServerConfiguration getDebeziumSqlServerConfiguration() {
+		return debeziumSqlServerConfiguration;
 	}
 }

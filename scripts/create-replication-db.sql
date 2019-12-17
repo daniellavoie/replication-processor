@@ -1,6 +1,6 @@
 -- Create the test database
-CREATE DATABASE cdcpoc;
+CREATE DATABASE tests;
 GO
-USE cdcpoc;
+USE tests;
 EXEC sys.sp_cdc_enable_db;
 GO

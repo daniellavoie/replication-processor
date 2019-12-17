@@ -10,15 +10,15 @@ public class SinkDefinition {
 	private final String name;
 	private final Type type;
 	private final int tasksMax;
-	private final SqlServerConfiguration sqlServerConfiguration;
+	private final SqlServerSinkConfiguration sqlServerSinkConfiguration;
 
 	public SinkDefinition(@JsonProperty("name") String name,
 			@JsonProperty("type") Type type, @JsonProperty("tasksMax") int tasksMax,
-			@JsonProperty("sqlServerConfiguration") SqlServerConfiguration sqlServerConfiguration) {
+			@JsonProperty("sqlServerSinkConfiguration") SqlServerSinkConfiguration sqlServerSinkConfiguration) {
 		this.name = name;
 		this.type = type;
 		this.tasksMax = tasksMax;
-		this.sqlServerConfiguration = sqlServerConfiguration;
+		this.sqlServerSinkConfiguration = sqlServerSinkConfiguration;
 	}
 
 	public String getName() {
@@ -33,7 +33,7 @@ public class SinkDefinition {
 		return tasksMax;
 	}
 
-	public SqlServerConfiguration getSqlServerConfiguration() {
-		return sqlServerConfiguration;
+	public SqlServerSinkConfiguration getSqlServerSinkConfiguration() {
+		return sqlServerSinkConfiguration;
 	}
 }

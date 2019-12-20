@@ -1,5 +1,7 @@
 package io.daniellavoie.replication.processor.model;
 
+import java.util.Map;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -9,34 +11,26 @@ public class SourceDefinition {
 	}
 
 	private final Type type;
-	private final Format valueFormat;
 	private final String schema;
-
-	private final DebeziumSqlServerConfiguration debeziumSqlServerConfiguration;
+	private final Map<String, String> configs;
 
 	@JsonCreator
-	public SourceDefinition(@JsonProperty("type") Type type, @JsonProperty("valueFormat") Format valueFormat,
-			@JsonProperty("schema") String schema,
-			@JsonProperty("debeziumSqlServerConfiguration") DebeziumSqlServerConfiguration debeziumSqlServerConfiguration) {
+	public SourceDefinition(@JsonProperty("type") Type type, @JsonProperty("schema") String schema,
+			@JsonProperty("configs") Map<String, String> configs) {
 		this.type = type;
-		this.valueFormat = valueFormat;
 		this.schema = schema;
-		this.debeziumSqlServerConfiguration = debeziumSqlServerConfiguration;
+		this.configs = configs;
 	}
 
 	public Type getType() {
 		return type;
 	}
 
-	public Format getValueFormat() {
-		return valueFormat;
-	}
-
 	public String getSchema() {
 		return schema;
 	}
 
-	public DebeziumSqlServerConfiguration getDebeziumSqlServerConfiguration() {
-		return debeziumSqlServerConfiguration;
+	public Map<String, String> getConfigs() {
+		return configs;
 	}
 }

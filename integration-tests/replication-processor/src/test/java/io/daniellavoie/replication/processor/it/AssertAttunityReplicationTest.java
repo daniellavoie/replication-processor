@@ -3,6 +3,7 @@ package io.daniellavoie.replication.processor.it;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -25,7 +26,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.daniellavoie.replication.processor.it.attunity.Event;
 import io.daniellavoie.replication.processor.it.attunity.Message;
-import io.daniellavoie.replication.processor.it.model.Format;
 import io.daniellavoie.replication.processor.it.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.it.model.SinkDefinition;
 import io.daniellavoie.replication.processor.it.model.SourceDefinition;
@@ -36,7 +36,7 @@ import reactor.core.publisher.Mono;
 
 public class AssertAttunityReplicationTest extends AbstractReplicationTest {
 	private static final Logger LOGGER = LoggerFactory.getLogger(AssertAttunityReplicationTest.class);
-	
+
 	private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
 
 	@Autowired
@@ -53,8 +53,9 @@ public class AssertAttunityReplicationTest extends AbstractReplicationTest {
 	@Test
 	public void assertPricePublishing() throws IOException {
 		configureReplicationDefinition();
+
+		LOGGER.info("Pulling any existing and transient records from the sink topic.");
 		
-		// Clean existing records.
 		pullRecords(consumer).count().block();
 
 		jdbcTemplate.execute("delete from PricingPublish");
@@ -68,7 +69,7 @@ public class AssertAttunityReplicationTest extends AbstractReplicationTest {
 
 				.blockLast();
 
-		Assertions.assertEquals(10000, pullRecords(consumer).count().block());
+		Assertions.assertEquals(10000, pullRecords(consumer, Duration.ofSeconds(30)).count().block());
 		Assertions.assertEquals(10000, pullTableCount("PricingPublish").block());
 	}
 
@@ -108,11 +109,10 @@ public class AssertAttunityReplicationTest extends AbstractReplicationTest {
 				new InputStreamReader(new ClassPathResource("avro/PricingPublish.avsc").getInputStream())).lines()
 						.collect(Collectors.joining("\n"));
 
-		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.ATTUNITY, Format.JSON, null,
-				null);
+		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.ATTUNITY, null, null);
 
 		SinkDefinition sinkDefinition = new SinkDefinition("sql-server", SinkDefinition.Type.SQLSERVER, 1,
-				buildSqlServerSinkConfiguration(environment));
+				buildSinkConfigs(environment));
 
 		ReplicationDefinition replicationDefinition = new ReplicationDefinition("test",
 				new Topic(attunitySourceConfiguration.getName(), attunitySourceConfiguration.isCompacted(),
@@ -122,7 +122,7 @@ public class AssertAttunityReplicationTest extends AbstractReplicationTest {
 				new Topic(pricingPublishConfiguration.getName(), pricingPublishConfiguration.isCompacted(),
 						pricingPublishConfiguration.getPartitions(),
 						pricingPublishConfiguration.getReplicationFactor()),
-				Format.AVRO, sinkSchema, Arrays.asList(sinkDefinition));
+				sinkSchema, Arrays.asList(sinkDefinition));
 
 		LOGGER.info("Replication Definition : {}", new ObjectMapper().writeValueAsString(replicationDefinition));
 

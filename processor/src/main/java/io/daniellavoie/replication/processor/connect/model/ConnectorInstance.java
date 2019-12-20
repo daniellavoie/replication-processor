@@ -22,4 +22,9 @@ public class ConnectorInstance {
 	public Map<String, String> getConfig() {
 		return config;
 	}
+
+	@Override
+	public String toString() {
+		return "ConnectorInstance [name=" + name + ", config=" + config + "]";
+	}
 }

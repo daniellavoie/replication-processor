@@ -16,6 +16,7 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Produced;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.stereotype.Service;
 
@@ -32,13 +33,16 @@ import reactor.core.publisher.Mono;
 public class TopologyServiceImpl implements TopologyService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(TopologyServiceImpl.class);
 
+	private final String applicationName;
 	private final AdminClient adminClient;
 	private final KafkaProperties kafkaProperties;
 	private final Properties baseProperties;
 
 	private Map<String, KafkaStreams> streams = new HashMap<>();
 
-	public TopologyServiceImpl(AdminClient adminClient, KafkaProperties kafkaProperties) {
+	public TopologyServiceImpl(@Value("${spring.application.name}") String applicationName, AdminClient adminClient,
+			KafkaProperties kafkaProperties) {
+		this.applicationName = applicationName;
 		this.adminClient = adminClient;
 		this.kafkaProperties = kafkaProperties;
 
@@ -99,8 +103,7 @@ public class TopologyServiceImpl implements TopologyService {
 
 				Properties streamsProperties = new Properties();
 				streamsProperties.putAll(baseProperties);
-				streamsProperties.put("application.id",
-						streamsProperties.get("application.id") + "-" + replicationDefinition.getName());
+				streamsProperties.put("application.id", applicationName + "-" + replicationDefinition.getName());
 
 				KafkaStreams replicationStream = new KafkaStreams(topology, streamsProperties);
 

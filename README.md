@@ -81,14 +81,12 @@ curl -X POST http://localhost:8080/replication-definition \
   },
   "source":{
     "type":"SQLSERVER",
-    "valueFormat":"JSON",
-    "debeziumSqlServerConfiguration": {
-      "hostname": "replicated-db",
-      "port": "1433",
-      "user": "SA",
-      "password": "Password!",
-      "dbname": "tests",,
-      "serverName": "replicated-db",
+    "configs": {
+      "database.hostname": "replicated-db",
+      "database.port": "1433",
+      "database.user": "SA",
+      "database.password": "Password!",
+      "database.dbname": "tests"
     }
   },
   "sinkTopic":{
@@ -97,7 +95,19 @@ curl -X POST http://localhost:8080/replication-definition \
     "partitions":1,
     "replicationFactor":1
   },
-  "sinkValueFormat":"AVRO",
+  "sinks":[
+    {
+      "type":"SQLSERVER",
+      "tasksMax":1,
+      "name":"sql-server",
+      "configs":{
+        "connection.url":"jdbc:sqlserver://replicated-db:1433",
+        "connection.user":"SA",
+        "connection.password":"Password!",
+        "pks.fields":"KeyEMDPricing"
+      }
+    }
+  ],
   "sinkSchema": "\
     {\n\
       \"type\": \"record\",\n\
@@ -157,20 +167,7 @@ curl -X POST http://localhost:8080/replication-definition \
           \"type\": {\"type\" : \"long\", \"logicalType\" : \"timestamp-millis\"}\n\
         }\n\
       ]\n\
-    }",
-  "sinks":[
-    {
-      "sqlServerConfiguration":{
-        "connectionUrl":"jdbc:sqlserver://replicated-db:1433",
-        "user":"SA",
-        "password":"Password!",
-        "pkFields":"KeyEMDPricing"
-      },
-      "type":"SQLSERVER",
-      "tasksMax":1,
-      "name":"sql-server"
-    }
-  ]
+    }"
 }
 
 EOF
@@ -183,7 +180,7 @@ Control Center can be opened from http://localhost:9021 and will let you inspect
 ### Generate some fake data in the source topic
 
 ```
-$ ./mvnw -f integration-tests/replication-processor/pom.xml
+$ ./mvnw -f integration-tests/replication-processor/pom.xml test
 ```
 
 ### Accessing the sink database to valide the rows have been replicated successfully

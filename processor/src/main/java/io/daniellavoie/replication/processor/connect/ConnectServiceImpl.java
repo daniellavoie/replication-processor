@@ -2,11 +2,11 @@ package io.daniellavoie.replication.processor.connect;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
 import io.daniellavoie.replication.processor.connect.model.ConnectorStatusResponse;
@@ -25,29 +25,40 @@ public class ConnectServiceImpl implements ConnectService {
 	private Mono<Void> cleanConnector(String name) {
 		return connectWebClient.delete().uri("/connectors/{name}", name)
 
-				.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-
 				.exchange()
 
-				.then()
+				.doOnSubscribe(subscriber -> LOGGER.info("Deleting connector instance {}.", name))
 
-				.doOnSubscribe(subscriber -> LOGGER.info("Deleting connector instance {}.", name));
+				.then();
 	}
 
 	public Mono<ConnectorInstance> createConnector(ConnectorInstance connectorInstance) {
 		return cleanConnector(connectorInstance.getName())
 
+				.doOnSubscribe(subscriber -> LOGGER.info("Creating connector {}.", connectorInstance))
+
 				.then(connectWebClient.post().uri("/connectors").bodyValue(connectorInstance)
-						.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE).exchange()
 
-						.flatMap(response -> response.bodyToMono(ConnectorInstance.class)))
+						.exchange()
 
-				.doOnSubscribe(subscriber -> LOGGER.info("Creating connector {}." + connectorInstance.getName()));
+						.flatMap(response -> handleResponse(response, ConnectorInstance.class)))
+
+				.log();
+	}
+
+	private <T> Mono<T> handleResponse(ClientResponse clientResponse, Class<T> responseType) {
+		if (clientResponse.statusCode().is2xxSuccessful()) {
+			return clientResponse.bodyToMono(responseType);
+		} else {
+			return clientResponse.createException().flatMap(exception -> Mono.<T>error(exception));
+		}
 	}
 
 	@Override
 	public Mono<Void> refreshConnector(ConnectorInstance connectorInstance) {
 		return getConnectorStatus(connectorInstance.getName())
+
+				.onErrorResume(this::is404Error, throwable -> Mono.<ConnectorStatusResponse>empty())
 
 				.filter(connectorStatusResponse -> connectorStatusResponse.getConnector().getState().equals("RUNNING"))
 
@@ -96,17 +107,20 @@ public class ConnectServiceImpl implements ConnectService {
 	private Mono<ConnectorInstance> getConnectorInstance(String name) {
 		return connectWebClient.get().uri("/connectors/{name}", name)
 
-				.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE).exchange()
+				.exchange()
 
-				.flatMap(response -> response.bodyToMono(ConnectorInstance.class));
+				.flatMap(response -> handleResponse(response, ConnectorInstance.class));
 	}
 
 	private Mono<ConnectorStatusResponse> getConnectorStatus(String name) {
 		return connectWebClient.get().uri("/connectors/{name}/status", name)
-				.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE).exchange()
 
-				.filter(response -> response.statusCode().is2xxSuccessful())
+				.exchange()
 
-				.flatMap(response -> response.bodyToMono(ConnectorStatusResponse.class));
+				.flatMap(response -> handleResponse(response, ConnectorStatusResponse.class));
+	}
+
+	private boolean is404Error(Throwable throwable) {
+		return throwable instanceof WebClientResponseException.NotFound;
 	}
 }

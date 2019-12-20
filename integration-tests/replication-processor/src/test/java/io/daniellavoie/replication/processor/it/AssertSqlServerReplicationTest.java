@@ -3,9 +3,12 @@ package io.daniellavoie.replication.processor.it;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -19,8 +22,6 @@ import org.springframework.core.io.ClassPathResource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.daniellavoie.replication.processor.it.model.DebeziumSqlServerConfiguration;
-import io.daniellavoie.replication.processor.it.model.Format;
 import io.daniellavoie.replication.processor.it.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.it.model.SinkDefinition;
 import io.daniellavoie.replication.processor.it.model.SourceDefinition;
@@ -43,8 +44,9 @@ public class AssertSqlServerReplicationTest extends AbstractReplicationTest {
 	@Test
 	public void assertPricePublishing() throws IOException {
 		configureReplicationDefinition();
-		
-		// Clean existing records.
+
+		LOGGER.info("Pulling any existing and transient records from the sink topic.");
+
 		pullRecords(consumer).count().block();
 
 		jdbcTemplate.execute("delete from PricingPublish");
@@ -59,7 +61,7 @@ public class AssertSqlServerReplicationTest extends AbstractReplicationTest {
 
 				.blockLast();
 
-		Assertions.assertEquals(10000, pullRecords(consumer).count().block());
+		Assertions.assertEquals(10000, pullRecords(consumer, Duration.ofSeconds(30)).count().block());
 		Assertions.assertEquals(10000, pullTableCount("PricingPublish").block());
 	}
 
@@ -67,19 +69,18 @@ public class AssertSqlServerReplicationTest extends AbstractReplicationTest {
 		String sinkSchema = new BufferedReader(
 				new InputStreamReader(new ClassPathResource("avro/PricingPublish.avsc").getInputStream())).lines()
 						.collect(Collectors.joining("\n"));
+		Map<String, String> configs = new HashMap<>();
 
-		DebeziumSqlServerConfiguration debeziumSqlServerConfiguration = new DebeziumSqlServerConfiguration(
-				environment.getProperty("replication.source.sql-server.hostname"),
-				environment.getProperty("replication.source.sql-server.port", Integer.class),
-				environment.getProperty("replication.source.sql-server.username"),
-				environment.getProperty("replication.source.sql-server.password"),
-				environment.getProperty("replication.source.sql-server.name"),
-				environment.getProperty("replication.source.sql-server.hostname"));
+		configs.put("database.hostname", environment.getProperty("replication.source.sql-server.hostname"));
+		configs.put("database.port", environment.getProperty("replication.source.sql-server.port"));
+		configs.put("database.user", environment.getProperty("replication.source.sql-server.username"));
+		configs.put("database.password", environment.getProperty("replication.source.sql-server.password"));
+		configs.put("database.dbname", environment.getProperty("replication.source.sql-server.name"));
 
-		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.SQLSERVER, Format.JSON, null,
-				debeziumSqlServerConfiguration);
+		SourceDefinition sourceDefinition = new SourceDefinition(SourceDefinition.Type.SQLSERVER, null, configs);
+
 		SinkDefinition sinkDefinition = new SinkDefinition("sql-server", SinkDefinition.Type.SQLSERVER, 1,
-				buildSqlServerSinkConfiguration(environment));
+				buildSinkConfigs(environment));
 
 		ReplicationDefinition replicationDefinition = new ReplicationDefinition("test-sqlserver",
 				new Topic(sqlServerSourceConfiguration.getName(), sqlServerSourceConfiguration.isCompacted(),
@@ -89,7 +90,7 @@ public class AssertSqlServerReplicationTest extends AbstractReplicationTest {
 				new Topic(pricingPublishConfiguration.getName(), pricingPublishConfiguration.isCompacted(),
 						pricingPublishConfiguration.getPartitions(),
 						pricingPublishConfiguration.getReplicationFactor()),
-				Format.AVRO, sinkSchema, Arrays.asList(sinkDefinition));
+				sinkSchema, Arrays.asList(sinkDefinition));
 
 		LOGGER.info("Replication Definition : {}", new ObjectMapper().writeValueAsString(replicationDefinition));
 

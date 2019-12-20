@@ -1,5 +1,7 @@
 package io.daniellavoie.replication.processor.model;
 
+import java.util.Map;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class SinkDefinition {
@@ -10,15 +12,15 @@ public class SinkDefinition {
 	private final String name;
 	private final Type type;
 	private final int tasksMax;
-	private final SqlServerSinkConfiguration sqlServerSinkConfiguration;
+	private final Map<String, String> configs;
 
 	public SinkDefinition(@JsonProperty("name") String name,
 			@JsonProperty("type") Type type, @JsonProperty("tasksMax") int tasksMax,
-			@JsonProperty("sqlServerSinkConfiguration") SqlServerSinkConfiguration sqlServerSinkConfiguration) {
+			@JsonProperty("configs") Map<String, String> configs) {
 		this.name = name;
 		this.type = type;
 		this.tasksMax = tasksMax;
-		this.sqlServerSinkConfiguration = sqlServerSinkConfiguration;
+		this.configs = configs;
 	}
 
 	public String getName() {
@@ -33,7 +35,7 @@ public class SinkDefinition {
 		return tasksMax;
 	}
 
-	public SqlServerSinkConfiguration getSqlServerSinkConfiguration() {
-		return sqlServerSinkConfiguration;
+	public Map<String, String> getConfigs() {
+		return configs;
 	}
 }

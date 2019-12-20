@@ -5,26 +5,22 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-
 public class ReplicationDefinition {
 	private final String name;
 	private final Topic sourceTopic;
 	private final SourceDefinition source;
 	private final Topic sinkTopic;
-	private final Format sinkValueFormat;
 	private final String sinkSchema;
 	private final List<SinkDefinition> sinks;
 
 	@JsonCreator
-	public ReplicationDefinition( @JsonProperty("name") String name,
-			@JsonProperty("sourceTopic") Topic sourceTopic,
+	public ReplicationDefinition(@JsonProperty("name") String name, @JsonProperty("sourceTopic") Topic sourceTopic,
 			@JsonProperty("source") SourceDefinition source, @JsonProperty("sinkTopic") Topic sinkTopic,
-			@JsonProperty("sinkValueFormat") Format sinkValueFormat, @JsonProperty("sinkSchema") String sinkSchema, @JsonProperty("sinks") List<SinkDefinition> sinks) {
+			@JsonProperty("sinkSchema") String sinkSchema, @JsonProperty("sinks") List<SinkDefinition> sinks) {
 		this.name = name;
 		this.sourceTopic = sourceTopic;
 		this.source = source;
 		this.sinkTopic = sinkTopic;
-		this.sinkValueFormat = sinkValueFormat;
 		this.sinkSchema = sinkSchema;
 		this.sinks = sinks;
 	}
@@ -43,10 +39,6 @@ public class ReplicationDefinition {
 
 	public Topic getSinkTopic() {
 		return sinkTopic;
-	}
-
-	public Format getSinkValueFormat() {
-		return sinkValueFormat;
 	}
 
 	public String getSinkSchema() {

@@ -1,0 +1,31 @@
+create table PricingPublish (
+  KeyEMDPricing varchar(255) not null, 
+  ActiveRow bit, 
+  InstrumentDeliveryEnd datetime(6), 
+  InstrumentDeliveryStart datetime(6), 
+  InstrumentValue double precision, 
+  InstrumentValueAsOf datetime(6), 
+  InstrumentValuePublishDate datetime(6), 
+  KeyInstrument varchar(255), 
+  KeyInstrumentLocation integer, 
+  KeyInstrumentMeasure integer, 
+  KeyInstrumentSource integer, 
+  UpdDate datetime(6), 
+  UpdOperation integer, 
+primary key (keyEMDPricing)) engine=InnoDB;
+
+create table SourcePricingPublish (
+  KeyEMDPricing varchar(255) not null, 
+  ActiveRow bit, 
+  InstrumentDeliveryEnd datetime(6), 
+  InstrumentDeliveryStart datetime(6), 
+  InstrumentValue double precision, 
+  InstrumentValueAsOf datetime(6), 
+  InstrumentValuePublishDate datetime(6), 
+  KeyInstrument varchar(255), 
+  KeyInstrumentLocation integer, 
+  KeyInstrumentMeasure integer, 
+  KeyInstrumentSource integer, 
+  UpdDate datetime(6), 
+  UpdOperation integer, 
+ primary key (keyEMDPricing)) engine=InnoDB;

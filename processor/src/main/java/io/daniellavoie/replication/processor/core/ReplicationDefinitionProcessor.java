@@ -18,13 +18,16 @@ public class ReplicationDefinitionProcessor implements Processor<String, Replica
 	private final String storeName;
 
 	private KeyValueStore<String, ReplicationDefinition> rateStore;
-	private final DirectProcessor<ReplicationDefinition> processor;
+	private final DirectProcessor<ReplicationDefinition> updateProcessor;
+	private final DirectProcessor<ReplicationDefinition> deleteProcessor;
 
-	public ReplicationDefinitionProcessor(String storeName, DirectProcessor<ReplicationDefinition> processor) {
+	public ReplicationDefinitionProcessor(String storeName, DirectProcessor<ReplicationDefinition> updateProcessor,
+			DirectProcessor<ReplicationDefinition> deleteProcessor) {
 		LOGGER.trace("Creating a new replication definition processor.");
 
 		this.storeName = storeName;
-		this.processor = processor;
+		this.updateProcessor = updateProcessor;
+		this.deleteProcessor = deleteProcessor;
 	}
 
 	@Override
@@ -47,7 +50,7 @@ public class ReplicationDefinitionProcessor implements Processor<String, Replica
 
 		LOGGER.trace("Retreived rate state store {}.", rateStore);
 
-		Flux.fromIterable(() -> rateStore.all()).map(keyValue -> keyValue.value).doOnNext(processor::onNext)
+		Flux.fromIterable(() -> rateStore.all()).map(keyValue -> keyValue.value).doOnNext(updateProcessor::onNext)
 				.subscribe();
 	}
 
@@ -55,8 +58,17 @@ public class ReplicationDefinitionProcessor implements Processor<String, Replica
 	public void process(String key, ReplicationDefinition value) {
 		LOGGER.trace("Storing {} in replication definition state store {} with key {}.", value, this, key);
 
-		rateStore.put(key, value);
+		if (value != null) {
+			rateStore.put(key, value);
 
-		processor.onNext(value);
+			updateProcessor.onNext(value);
+		} else {
+			ReplicationDefinition oldDefinition = rateStore.get(key);
+
+			rateStore.delete(key);
+
+			deleteProcessor.onNext(oldDefinition);
+		}
+
 	}
 }

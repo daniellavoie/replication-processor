@@ -1,5 +1,6 @@
 package io.daniellavoie.replication.processor.core;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +23,11 @@ public class ReplicationDefinitionController {
 
 	}
 
+	@DeleteMapping("/{name}")
+	public Mono<Void> delete(@PathVariable String name) {
+		return replicationService.delete(name);
+	}
+
 	@GetMapping
 	public Flux<ReplicationDefinition> findAll() {
 		return replicationService.findAll();
@@ -33,10 +39,8 @@ public class ReplicationDefinitionController {
 	}
 
 	@PostMapping
-	public Mono<ReplicationDefinition> saveReplicationDefinition(
-			@RequestBody ReplicationDefinition replicationDefinition) {
+	public Mono<ReplicationDefinition> save(@RequestBody ReplicationDefinition replicationDefinition) {
 		return replicationService.save(replicationDefinition);
-
 	}
 
 }

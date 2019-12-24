@@ -9,8 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.util.Base64Utils;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import io.daniellavoie.replication.processor.connect.ConnectConfiguration;
-
 @Configuration
 public class KafkaConfig {
 	@Bean

@@ -51,6 +51,7 @@ services:
     volumes:
     - ./connectors:/connect-plugins
     - ./connect-libs/mssql-jdbc-7.2.2.jre8.jar:/usr/share/java/kafka-connect-jdbc/mssql-jdbc-7.2.2.jre8.jar
+    - ./connect-libs/mysql-connector-java-8.0.13.jar:/usr/share/java/kafka-connect-jdbc/mysql-connector-java-8.0.13.jar
     environment:
       CONNECT_BOOTSTRAP_SERVERS: "kafka:19092"
       CONNECT_REST_PORT: 8083
@@ -105,13 +106,26 @@ services:
       # HTTP and HTTPS to Control Center UI 
       CONTROL_CENTER_REST_LISTENERS: "http://0.0.0.0:9021"
 
-  replicated-db:
-    container_name: replication-replicated-db
+  sqlserver:
+    container_name: replication-sqlserver
     image: microsoft/mssql-server-linux:2017-latest
-    hostname: replicated-db
+    hostname: sqlserver
     ports:
     - 1433:1433
     environment:
     - ACCEPT_EULA=Y
     - MSSQL_AGENT_ENABLED=true
     - SA_PASSWORD=Password!
+
+  mysql:
+    container_name: replication-mysql
+    image: mysql:8.0.18
+    hostname: mysql
+    ports:
+    - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql
+      MYSQL_DATABASE: tests
+      MYSQL_USER: mysql-user
+      MYSQL_PASSWORD: mysql-password
+    command: --server-id=1000 --expire-logs-days=10

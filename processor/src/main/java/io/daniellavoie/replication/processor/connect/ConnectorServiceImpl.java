@@ -7,39 +7,32 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
-import org.springframework.util.Assert;
 
-import io.daniellavoie.replication.processor.config.ConnectSchemaRegistryConfiguration;
-import io.daniellavoie.replication.processor.connect.config.ConnectorConfigField;
-import io.daniellavoie.replication.processor.connect.config.ConnectorConfiguration;
-import io.daniellavoie.replication.processor.connect.config.FieldValidationError;
-import io.daniellavoie.replication.processor.connect.config.InvalidConnectorConfigurationException;
-import io.daniellavoie.replication.processor.connect.config.SinkConnectorConfiguration;
-import io.daniellavoie.replication.processor.connect.config.SourceConnectorConfiguration;
+import io.daniellavoie.replication.processor.config.ConnectConfiguration;
+import io.daniellavoie.replication.processor.connect.exception.InvalidConnectorConfigurationException;
+import io.daniellavoie.replication.processor.connect.model.ConnectorConfigField;
+import io.daniellavoie.replication.processor.connect.model.ConnectorConfigValidationResult;
 import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
+import io.daniellavoie.replication.processor.connect.model.FieldValidationError;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.model.SinkDefinition;
 import io.daniellavoie.replication.processor.model.SourceDefinition;
+import io.daniellavoie.replication.processor.sink.SinkConnectorConfiguration;
+import io.daniellavoie.replication.processor.source.SourceConnectorConfiguration;
 
 @Service
 public class ConnectorServiceImpl implements ConnectorService {
 	private final Map<SourceDefinition.Type, SourceConnectorConfiguration> sourceConnectors;
 	private final Map<SinkDefinition.Type, SinkConnectorConfiguration> sinkConnectors;
-	private final ConnectSchemaRegistryConfiguration connectSchemaRegistryConfiguration;
+	private final ConnectConfiguration connectConfiguration;
 
 	public ConnectorServiceImpl(List<SourceConnectorConfiguration> sourceConnectors,
-			List<SinkConnectorConfiguration> sinkConnectors,
-			ConnectSchemaRegistryConfiguration connectSchemaRegistryConfiguration) {
+			List<SinkConnectorConfiguration> sinkConnectors, ConnectConfiguration connectConfiguration) {
 		this.sourceConnectors = sourceConnectors.stream()
 				.collect(Collectors.toMap(SourceConnectorConfiguration::getSourceType, connector -> connector));
 		this.sinkConnectors = sinkConnectors.stream()
 				.collect(Collectors.toMap(SinkConnectorConfiguration::getSinkType, connector -> connector));
-		this.connectSchemaRegistryConfiguration = connectSchemaRegistryConfiguration;
-
-		Assert.isTrue(
-				connectSchemaRegistryConfiguration.getUrl() != null
-						&& !connectSchemaRegistryConfiguration.getUrl().trim().equals(""),
-				"Schema registry url is undefined for connect.");
+		this.connectConfiguration = connectConfiguration;
 	}
 
 	private Map<String, String> buildSinkConnectorInstanceConfigs(SinkConnectorConfiguration connectorConfiguration,
@@ -53,17 +46,17 @@ public class ConnectorServiceImpl implements ConnectorService {
 		connectorInstanceConfigs.put("connector.class", connectorConfiguration.getConnectorClass());
 		connectorInstanceConfigs.put("value.converter", "io.confluent.connect.avro.AvroConverter");
 		connectorInstanceConfigs.put("value.converter.schema.registry.url",
-				connectSchemaRegistryConfiguration.getUrl());
+				connectConfiguration.getSchemaRegistryUrl());
 
-		if (connectSchemaRegistryConfiguration.getSource() != null
-				&& !connectSchemaRegistryConfiguration.getSource().equals("")
-				&& connectSchemaRegistryConfiguration.getUserInfo() != null
-				&& !connectSchemaRegistryConfiguration.getUserInfo().trim().equals("")) {
+		if (connectConfiguration.getSchemaRegistryCrendentialsSource() != null
+				&& !connectConfiguration.getSchemaRegistryCrendentialsSource().equals("")
+				&& connectConfiguration.getSchemaRegistryUserInfo() != null
+				&& !connectConfiguration.getSchemaRegistryUserInfo().trim().equals("")) {
 
 			connectorInstanceConfigs.put("value.converter.schema.registry.basic.auth.user.info",
-					connectSchemaRegistryConfiguration.getSource());
-			connectorInstanceConfigs.put("value.converter.schema.basic.auth.credentials.source",
-					connectSchemaRegistryConfiguration.getUserInfo());
+					connectConfiguration.getSchemaRegistryCrendentialsSource());
+			connectorInstanceConfigs.put("value.converter.basic.auth.credentials.source",
+					connectConfiguration.getSchemaRegistryUserInfo());
 		}
 
 		connectorConfiguration.getKeyConverter()
@@ -93,7 +86,8 @@ public class ConnectorServiceImpl implements ConnectorService {
 
 	@Override
 	public Optional<ConnectorInstance> buildSourceConnectorInstance(ReplicationDefinition replicationDefinition) {
-		SourceConnectorConfiguration connectorConfiguration = getSourceConnectorConfiguration(replicationDefinition);
+		SourceConnectorConfiguration connectorConfiguration = getSourceConnectorConfiguration(
+				replicationDefinition.getSource().getType());
 
 		if (!connectorConfiguration.requiresInstance()) {
 			return Optional.empty();
@@ -128,10 +122,10 @@ public class ConnectorServiceImpl implements ConnectorService {
 						sinkDefinition.getType() + " is not a supported sink connector type."));
 	}
 
-	private SourceConnectorConfiguration getSourceConnectorConfiguration(ReplicationDefinition replicationDefinition) {
-		return Optional.ofNullable(sourceConnectors.get(replicationDefinition.getSource().getType()))
-				.orElseThrow(() -> new IllegalArgumentException(
-						replicationDefinition.getSource().getType() + " is not a supported source connector type."));
+	@Override
+	public SourceConnectorConfiguration getSourceConnectorConfiguration(SourceDefinition.Type type) {
+		return Optional.ofNullable(sourceConnectors.get(type))
+				.orElseThrow(() -> new IllegalArgumentException(type + " is not a supported source connector type."));
 	}
 
 	@Override

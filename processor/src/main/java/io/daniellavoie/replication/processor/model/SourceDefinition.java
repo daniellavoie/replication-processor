@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class SourceDefinition {
 	public enum Type {
-		TOPIC, ATTUNITY, SQLSERVER
+		TOPIC, ATTUNITY, MYSQL, SQLSERVER
 	}
 
 	private final Type type;

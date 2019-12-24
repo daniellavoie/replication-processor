@@ -5,6 +5,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface ReplicationDefinitionService {
+	Mono<Void> delete(String name);
+	
 	Flux<ReplicationDefinition> findAll();
 	
 	Mono<ReplicationDefinition> findOne(String name);

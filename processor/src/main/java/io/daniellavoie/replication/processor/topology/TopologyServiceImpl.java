@@ -21,11 +21,9 @@ import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.stereotype.Service;
 
 import io.confluent.kafka.streams.serdes.avro.GenericAvroSerde;
+import io.daniellavoie.replication.processor.connect.ConnectorService;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
-import io.daniellavoie.replication.processor.model.SourceDefinition;
-import io.daniellavoie.replication.processor.source.SourceDataExtractor;
-import io.daniellavoie.replication.processor.source.attunity.AttunityDataExtractor;
-import io.daniellavoie.replication.processor.source.debezium.sqlserver.DebeziumSqlServerDataExtractor;
+import io.daniellavoie.replication.processor.source.SourceConnectorConfiguration;
 import io.daniellavoie.replication.processor.topic.TopicUtil;
 import reactor.core.publisher.Mono;
 
@@ -35,22 +33,24 @@ public class TopologyServiceImpl implements TopologyService {
 
 	private final String applicationName;
 	private final AdminClient adminClient;
+	private final ConnectorService connectorService;
 	private final KafkaProperties kafkaProperties;
 	private final Properties baseProperties;
 
 	private Map<String, KafkaStreams> streams = new HashMap<>();
 
 	public TopologyServiceImpl(@Value("${spring.application.name}") String applicationName, AdminClient adminClient,
-			KafkaProperties kafkaProperties) {
+			ConnectorService connectorService, KafkaProperties kafkaProperties) {
 		this.applicationName = applicationName;
 		this.adminClient = adminClient;
+		this.connectorService = connectorService;
 		this.kafkaProperties = kafkaProperties;
 
 		this.baseProperties = new Properties();
 		this.baseProperties.putAll(kafkaProperties.buildStreamsProperties());
 	}
 
-	private Topology buildTopology(SourceDataExtractor sourceDataExtractor,
+	private Topology buildTopology(SourceConnectorConfiguration sourceConnectorConfiguration,
 			ReplicationDefinition replicationDefinition) {
 		StreamsBuilder streamsBuilder = new StreamsBuilder();
 
@@ -67,23 +67,12 @@ public class TopologyServiceImpl implements TopologyService {
 
 		eventStream
 
-				.flatMapValues(event -> sourceDataExtractor.extractRecord(event, avroSinkSchema).collectList().block())
+				.flatMapValues(event -> sourceConnectorConfiguration.extractRecord(event, avroSinkSchema).collectList()
+						.block())
 
 				.to(replicationDefinition.getSinkTopic().getName(), Produced.valueSerde(genericAvroSerde));
 
 		return streamsBuilder.build();
-	}
-
-	private SourceDataExtractor getDataExtractor(ReplicationDefinition replicationDefinition) {
-		SourceDefinition.Type type = replicationDefinition.getSource().getType();
-		if (type.equals(SourceDefinition.Type.ATTUNITY)) {
-			return new AttunityDataExtractor();
-		} else if (type.equals(SourceDefinition.Type.SQLSERVER)) {
-			return new DebeziumSqlServerDataExtractor();
-		}
-
-		throw new UnsupportedOperationException(
-				"No data extractor supported for format " + replicationDefinition.getSource().getType());
 	}
 
 	@Override
@@ -97,7 +86,9 @@ public class TopologyServiceImpl implements TopologyService {
 					existingStreams.close();
 				}
 
-				Topology topology = buildTopology(getDataExtractor(replicationDefinition), replicationDefinition);
+				Topology topology = buildTopology(
+						connectorService.getSourceConnectorConfiguration(replicationDefinition.getSource().getType()),
+						replicationDefinition);
 
 				LOGGER.info("Starting new topology {}.", topology.describe());
 
@@ -111,8 +102,27 @@ public class TopologyServiceImpl implements TopologyService {
 
 				replicationStream.start();
 
-				sink.success();
 			}
+
+			sink.success();
+		});
+	}
+
+	@Override
+	public Mono<Void> stopTopology(ReplicationDefinition replicationDefinition) {
+		return Mono.create(sink -> {
+			synchronized (streams) {
+				KafkaStreams existingStreams = streams.get(replicationDefinition.getName());
+				if (existingStreams != null) {
+					LOGGER.info("Stopping Kafka Streams instance for {}.", replicationDefinition.getName());
+
+					existingStreams.close();
+
+					streams.remove(replicationDefinition.getName());
+				}
+			}
+
+			sink.success();
 		});
 	}
 }

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class SinkDefinition {
 	public enum Type {
-		SQLSERVER
+		JDBC
 	}
 
 	private final String name;

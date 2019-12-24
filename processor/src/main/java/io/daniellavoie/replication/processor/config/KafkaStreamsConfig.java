@@ -15,8 +15,8 @@ import org.springframework.kafka.support.serializer.JsonSerde;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.daniellavoie.replication.processor.core.ReplicationDefinitionListener;
 import io.daniellavoie.replication.processor.core.ReplicationDefinitionProcessor;
-import io.daniellavoie.replication.processor.core.ReplicationDefinitionUpdateListener;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.store.ReplicationDefinitionStoreConfiguration;
 import io.daniellavoie.replication.processor.topic.ReplicationDefinitionConfiguration;
@@ -29,7 +29,7 @@ public class KafkaStreamsConfig {
 	public Topology topology(ReplicationDefinitionConfiguration replicationDefinitionConfiguration,
 			ReplicationDefinitionStoreConfiguration replicationDefinitionStoreConfiguration, AdminClient adminClient,
 			ObjectMapper objectMapper, StreamsBuilder streamsBuilder,
-			List<ReplicationDefinitionUpdateListener> replicationDefinitionUpdateListeners) {
+			List<ReplicationDefinitionListener> replicationDefinitionListeners) {
 		TopicUtil.createTopicIfMissing(replicationDefinitionConfiguration, adminClient);
 
 		streamsBuilder.addStateStore(Stores.keyValueStoreBuilder(
@@ -40,19 +40,30 @@ public class KafkaStreamsConfig {
 				replicationDefinitionConfiguration.getName(),
 				Consumed.with(Serdes.String(), new JsonSerde<ReplicationDefinition>(ReplicationDefinition.class)));
 
-		DirectProcessor<ReplicationDefinition> replicationDefinitionProcessor = DirectProcessor.create();
-		for (ReplicationDefinitionUpdateListener listener : replicationDefinitionUpdateListeners) {
-			replicationDefinitionProcessor.onBackpressureBuffer()
+		DirectProcessor<ReplicationDefinition> replicationDefinitionUpdateProcessor = DirectProcessor.create();
+		DirectProcessor<ReplicationDefinition> replicationDefinitionDeleteProcessor = DirectProcessor.create();
+		for (ReplicationDefinitionListener listener : replicationDefinitionListeners) {
+			replicationDefinitionUpdateProcessor.onBackpressureBuffer()
 
 					.doOnNext(listener::onUpdate)
 
 					.doOnError(listener::onError)
 
 					.subscribe();
+
+			replicationDefinitionDeleteProcessor.onBackpressureBuffer()
+
+					.doOnNext(listener::onDelete)
+
+					.doOnError(listener::onError)
+
+					.subscribe();
 		}
 
-		stream.process(() -> new ReplicationDefinitionProcessor(replicationDefinitionStoreConfiguration.getName(),
-				replicationDefinitionProcessor), replicationDefinitionStoreConfiguration.getName());
+		stream.process(
+				() -> new ReplicationDefinitionProcessor(replicationDefinitionStoreConfiguration.getName(),
+						replicationDefinitionUpdateProcessor, replicationDefinitionDeleteProcessor),
+				replicationDefinitionStoreConfiguration.getName());
 
 		return streamsBuilder.build();
 	}

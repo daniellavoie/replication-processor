@@ -1,5 +1,7 @@
 package io.daniellavoie.replication.processor.connect;
 
+import java.io.IOException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -7,6 +9,10 @@ import org.springframework.util.Assert;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.reactive.function.client.WebClientResponseException.BadRequest;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
 import io.daniellavoie.replication.processor.connect.model.ConnectorStatusResponse;
@@ -15,6 +21,7 @@ import reactor.core.publisher.Mono;
 @Service
 public class ConnectServiceImpl implements ConnectService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ConnectServiceImpl.class);
+	private static final ObjectMapper OBJECTMAPPER = new ObjectMapper().findAndRegisterModules();
 
 	private final WebClient connectWebClient;
 
@@ -22,18 +29,8 @@ public class ConnectServiceImpl implements ConnectService {
 		this.connectWebClient = connectWebClient;
 	}
 
-	private Mono<Void> cleanConnector(String name) {
-		return connectWebClient.delete().uri("/connectors/{name}", name)
-
-				.exchange()
-
-				.doOnSubscribe(subscriber -> LOGGER.info("Deleting connector instance {}.", name))
-
-				.then();
-	}
-
-	public Mono<ConnectorInstance> createConnector(ConnectorInstance connectorInstance) {
-		return cleanConnector(connectorInstance.getName())
+	private Mono<ConnectorInstance> createConnector(ConnectorInstance connectorInstance) {
+		return deleteConnector(connectorInstance.getName())
 
 				.doOnSubscribe(subscriber -> LOGGER.info("Creating connector {}.", connectorInstance))
 
@@ -43,7 +40,28 @@ public class ConnectServiceImpl implements ConnectService {
 
 						.flatMap(response -> handleResponse(response, ConnectorInstance.class)))
 
-				.log();
+				.onErrorResume(BadRequest.class,
+						badRequest -> Mono.error(() -> new ConnectException(mapError(badRequest), badRequest)))
+
+				.doOnError(throwable -> logCreateConnectorError(throwable, connectorInstance));
+	}
+
+	@Override
+	public Mono<Void> deleteConnector(String name) {
+		return connectWebClient.delete().uri("/connectors/" + name).exchange()
+
+				.doOnSubscribe(subscriber -> LOGGER.info("Deleting connector {}.", name))
+
+				.then();
+	}
+
+	private void logCreateConnectorError(Throwable throwable, ConnectorInstance connectorInstance) {
+		try {
+			LOGGER.error("Failed to create connector instance : {}.",
+					new ObjectMapper().findAndRegisterModules().writeValueAsString(connectorInstance));
+		} catch (JsonProcessingException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	private <T> Mono<T> handleResponse(ClientResponse clientResponse, Class<T> responseType) {
@@ -51,6 +69,14 @@ public class ConnectServiceImpl implements ConnectService {
 			return clientResponse.bodyToMono(responseType);
 		} else {
 			return clientResponse.createException().flatMap(exception -> Mono.<T>error(exception));
+		}
+	}
+
+	private ConnectErrorResponse mapError(BadRequest badRequest) {
+		try {
+			return OBJECTMAPPER.readValue(badRequest.getResponseBodyAsByteArray(), ConnectErrorResponse.class);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 
@@ -67,7 +93,7 @@ public class ConnectServiceImpl implements ConnectService {
 				.filter(existingConnectorInstance -> configurationMatches(connectorInstance, existingConnectorInstance))
 
 				// Mono will be empty if connector is not in a good state.
-				.switchIfEmpty(cleanConnector(connectorInstance.getName())
+				.switchIfEmpty(deleteConnector(connectorInstance.getName())
 
 						.then(createConnector(connectorInstance)))
 

@@ -8,6 +8,7 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.StreamSupport;
 
+import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -18,12 +19,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import io.daniellavoie.replication.processor.PricingPublish;
+import io.daniellavoie.replication.processor.it.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.it.topic.PricingPublishConfiguration;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
@@ -40,6 +43,9 @@ public abstract class AbstractReplicationTest {
 	protected PricingPublishConfiguration pricingPublishConfiguration;
 
 	@Autowired
+	protected AdminClient adminClient;
+
+	@Autowired
 	protected KafkaProperties kafkaProperties;
 
 	@Autowired
@@ -51,10 +57,44 @@ public abstract class AbstractReplicationTest {
 	@Autowired
 	protected Environment environment;
 
+	@Autowired
+	private WebClient connectWebClient;
+
 	protected Consumer<byte[], PricingPublish> consumer;
 
 	@BeforeEach
 	void preSetup() {
+		adminClient.deleteTopics(Arrays.asList(getSinkTopic(), getSourceTopic()));
+
+		LOGGER.info("Cleaning existing replication definitions.");
+
+		webClient.get().uri("/replication-definition").exchange()
+				.flatMapMany(response -> response.bodyToFlux(ReplicationDefinition.class))
+
+				.map(ReplicationDefinition::getName)
+
+				.flatMap(name -> webClient.delete().uri("/replication-definition/" + name).exchange()
+
+						.doOnNext(response -> LOGGER.info("Deleted replication definition {}.", name))
+
+						.then())
+
+				.blockLast();
+
+		LOGGER.info("Cleaning existing connectors on the connect server.");
+
+		connectWebClient.get().uri("/connectors").exchange()
+
+				.flatMapMany(response -> response.bodyToMono(new ParameterizedTypeReference<String[]>() {
+				}))
+
+				.flatMap(connectors -> Flux.fromArray(connectors))
+
+				.flatMap(connectorName -> connectWebClient.delete().uri("/connectors/" + connectorName).exchange()
+						.doOnNext(response -> LOGGER.info("Deleted connector {}.", connectorName)))
+
+				.blockLast();
+
 		consumer = new DefaultKafkaConsumerFactory<byte[], PricingPublish>(kafkaProperties.buildConsumerProperties())
 				.createConsumer();
 
@@ -69,19 +109,24 @@ public abstract class AbstractReplicationTest {
 	protected Map<String, String> buildSinkConfigs(Environment environment) {
 		Map<String, String> configs = new HashMap<>();
 
-		configs.put("connection.url", environment.getProperty("replication.sink.sql-server.url"));
-		configs.put("connection.user", environment.getProperty("replication.sink.sql-server.username"));
-		configs.put("connection.password", environment.getProperty("replication.sink.sql-server.password"));
+		configs.put("connection.url", environment.getProperty("replication.sink.jdbc.url"));
+		configs.put("connection.user", environment.getProperty("replication.sink.jdbc.username"));
+		configs.put("connection.password", environment.getProperty("replication.sink.jdbc.password"));
 		configs.put("pks.fields", "KeyEMDPricing");
 
 		return configs;
 	}
 
-	private <K, V> void createRecordPuller(FluxSink<V> subscriber, Consumer<K, V> consumer, AtomicLong recordCount) {
+	public abstract String getSourceTopic();
+
+	public abstract String getSinkTopic();
+
+	private <K, V> void createRecordPuller(FluxSink<V> subscriber, Consumer<K, V> consumer, Duration pullTimeout,
+			AtomicLong recordCount) {
 		boolean completed = false;
 
 		do {
-			ConsumerRecords<K, V> records = consumer.poll(Duration.ofSeconds(60));
+			ConsumerRecords<K, V> records = consumer.poll(pullTimeout);
 
 			recordCount.addAndGet(records.count());
 
@@ -114,7 +159,7 @@ public abstract class AbstractReplicationTest {
 
 		subscriber.success(lastCount);
 	}
-	
+
 	protected <K, V> Flux<V> pullRecords(Consumer<K, V> consumer) {
 		return pullRecords(consumer, Duration.ofSeconds(5));
 	}
@@ -122,7 +167,7 @@ public abstract class AbstractReplicationTest {
 	protected <K, V> Flux<V> pullRecords(Consumer<K, V> consumer, Duration timeout) {
 		AtomicLong recordCount = new AtomicLong();
 
-		return Flux.<V>create(subscriber -> createRecordPuller(subscriber, consumer, recordCount))
+		return Flux.<V>create(subscriber -> createRecordPuller(subscriber, consumer, timeout, recordCount))
 
 				.doOnSubscribe(
 						subscriber -> LOGGER.info("Pulling records from {}.", pricingPublishConfiguration.getName()))

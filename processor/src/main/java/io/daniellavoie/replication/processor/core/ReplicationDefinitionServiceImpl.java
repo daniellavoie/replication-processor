@@ -1,5 +1,7 @@
 package io.daniellavoie.replication.processor.core;
 
+import java.util.Optional;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
@@ -11,6 +13,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import io.daniellavoie.replication.processor.connect.ConnectService;
 import io.daniellavoie.replication.processor.connect.ConnectorService;
+import io.daniellavoie.replication.processor.connect.model.ConnectorInstance;
 import io.daniellavoie.replication.processor.model.ReplicationDefinition;
 import io.daniellavoie.replication.processor.store.ReplicationDefinitionStoreConfiguration;
 import io.daniellavoie.replication.processor.topic.ReplicationDefinitionConfiguration;
@@ -19,8 +22,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @Service
-public class ReplicationDefinitionServiceImpl
-		implements ReplicationDefinitionService, ReplicationDefinitionUpdateListener {
+public class ReplicationDefinitionServiceImpl implements ReplicationDefinitionService, ReplicationDefinitionListener {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationDefinitionServiceImpl.class);
 
 	private final ConnectorService connectorService;
@@ -47,25 +49,13 @@ public class ReplicationDefinitionServiceImpl
 
 		this.kafkaTemplate = new KafkaTemplate<String, ReplicationDefinition>(
 				new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties()));
-
 	}
 
-	private Mono<Void> startReplication(ReplicationDefinition replicationDefinition) {
+	@Override
+	public Mono<Void> delete(String name) {
+		return Mono
 
-		// Refresh the sink connectors if required.
-		return Flux.fromIterable(connectorService.buildSinkConnectorInstances(replicationDefinition))
-
-				.flatMap(connectService::refreshConnector)
-
-				// Refresh the source connector if required.
-				.then(connectorService.buildSourceConnectorInstance(replicationDefinition).map(Mono::just)
-						.orElseGet(Mono::empty)
-
-						.flatMap(connectService::refreshConnector))
-
-				.then(topologyService.runTopopoly(replicationDefinition))
-
-				.doOnSubscribe(subscriber -> LOGGER.info("Starting replication {}", replicationDefinition.getName()));
+				.fromFuture(kafkaTemplate.send(topicName, name, null).completable().toCompletableFuture()).then();
 	}
 
 	@Override
@@ -89,10 +79,10 @@ public class ReplicationDefinitionServiceImpl
 	}
 
 	@Override
-	public void onUpdate(ReplicationDefinition replicationDefinition) {
-		startReplication(replicationDefinition).
+	public void onDelete(ReplicationDefinition replicationDefinition) {
+		stopReplication(replicationDefinition)
 
-				doOnError(this::onError)
+				.doOnError(this::onError)
 
 				.subscribe();
 	}
@@ -103,6 +93,15 @@ public class ReplicationDefinitionServiceImpl
 	}
 
 	@Override
+	public void onUpdate(ReplicationDefinition replicationDefinition) {
+		startReplication(replicationDefinition)
+
+				.doOnError(this::onError)
+
+				.subscribe();
+	}
+
+	@Override
 	public Mono<ReplicationDefinition> save(ReplicationDefinition replicationDefinition) {
 		return Mono
 
@@ -110,5 +109,42 @@ public class ReplicationDefinitionServiceImpl
 						.completable().toCompletableFuture())
 
 				.map(sendResult -> sendResult.getProducerRecord().value());
+	}
+
+	private Mono<Void> startReplication(ReplicationDefinition replicationDefinition) {
+
+		// Refresh the sink connectors if required.
+		return Flux.fromIterable(connectorService.buildSinkConnectorInstances(replicationDefinition))
+
+				.flatMap(connectService::refreshConnector)
+
+				// Refresh the source connector if required.
+				.then(connectorService.buildSourceConnectorInstance(replicationDefinition).map(Mono::just)
+						.orElseGet(Mono::empty)
+
+						.flatMap(connectService::refreshConnector))
+
+				.then(topologyService.runTopopoly(replicationDefinition))
+
+				.doOnSubscribe(subscriber -> LOGGER.info("Starting replication {}", replicationDefinition.getName()));
+	}
+
+	private Mono<Void> stopReplication(ReplicationDefinition replicationDefinition) {
+		return Mono.just(connectorService.buildSourceConnectorInstance(replicationDefinition))
+				.filter(Optional::isPresent)
+
+				.map(Optional::get)
+
+				.map(ConnectorInstance::getName)
+
+				.flatMap(connectService::deleteConnector)
+
+				.thenMany(Flux.fromIterable(connectorService.buildSinkConnectorInstances(replicationDefinition)))
+
+				.map(ConnectorInstance::getName)
+
+				.flatMap(connectService::deleteConnector)
+
+				.then(topologyService.stopTopology(replicationDefinition));
 	}
 }
